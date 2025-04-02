@@ -14,12 +14,12 @@ pipeline {
 
 
     environment {
-        DOCKER_CREDENTIALS = credentials('docker-hub-credentials')
+        DOCKER_CREDENTIALS = credentials('docker-hub-credentials-2')
         AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
         DB_CREDS = credentials('db-credentials')
         JWT_SECRET = credentials('jwt-secret')
-        DOCKER_REGISTRY = 'isuruamarasena'
+        DOCKER_REGISTRY = 'kasun020'
         AWS_DEFAULT_REGION    = 'us-west-2'
         ANSIBLE_CONTAINER = 'willhallonline/ansible:latest'
         DOCKER_HOST = 'unix:///var/run/docker.sock'
@@ -73,17 +73,17 @@ pipeline {
                                     // Generate dummy public key for destroy operation
                                     sh '''
                                         mkdir -p keys
-                                        cp "$SSH_KEY" keys/wanderwise-key
-                                        chmod 600 keys/wanderwise-key
+                                        cp "$SSH_KEY" keys/recipeapp-key
+                                        chmod 600 keys/recipeapp-key
                                         
                                         # Generate and save public key to file
-                                        ssh-keygen -y -f keys/wanderwise-key > keys/wanderwise-key.pub
-                                        chmod 644 keys/wanderwise-key.pub
+                                        ssh-keygen -y -f keys/recipeapp-key > keys/recipeapp-key.pub
+                                        chmod 644 keys/recipeapp-key.pub
                                     '''
                                     
                                     // Get the public key content
                                     def publicKey = sh(
-                                        script: 'cat keys/wanderwise-key.pub',
+                                        script: 'cat keys/recipeapp-key.pub',
                                         returnStdout: true
                                     ).trim()
 
@@ -99,7 +99,7 @@ pipeline {
                                     sh '''
                                         # Clean up EC2 instances first
                                         echo "Checking for EC2 instances..."
-                                        INSTANCES=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=WanderWise-WebServer" --query 'Reservations[].Instances[].InstanceId' --output text)
+                                        INSTANCES=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=recipeapp-WebServer" --query 'Reservations[].Instances[].InstanceId' --output text)
                                         if [ ! -z "$INSTANCES" ]; then
                                             echo "Terminating EC2 instances: $INSTANCES"
                                             aws ec2 terminate-instances --instance-ids $INSTANCES || true
@@ -109,21 +109,21 @@ pipeline {
                                         
                                         # Clean up RDS instances
                                         echo "Checking for RDS instances..."
-                                        RDS_INSTANCES=$(aws rds describe-db-instances --query 'DBInstances[?DBInstanceIdentifier==`wanderwise-db`].DBInstanceIdentifier' --output text)
+                                        RDS_INSTANCES=$(aws rds describe-db-instances --query 'DBInstances[?DBInstanceIdentifier==`recipeapp-db`].DBInstanceIdentifier' --output text)
                                         if [ ! -z "$RDS_INSTANCES" ]; then
                                             echo "Deleting RDS instance: $RDS_INSTANCES"
-                                            aws rds delete-db-instance --db-instance-identifier wanderwise-db --skip-final-snapshot --delete-automated-backups
+                                            aws rds delete-db-instance --db-instance-identifier recipeapp-db --skip-final-snapshot --delete-automated-backups
                                             echo "Waiting for RDS instance to be deleted..."
-                                            aws rds wait db-instance-deleted --db-instance-identifier wanderwise-db
+                                            aws rds wait db-instance-deleted --db-instance-identifier recipeapp-db
                                         fi
 
                                         # Clean up DB subnet groups
                                         echo "Checking for DB subnet groups..."
-                                        aws rds delete-db-subnet-group --db-subnet-group-name wanderwise-db-subnet-group || true
+                                        aws rds delete-db-subnet-group --db-subnet-group-name recipeapp-db-subnet-group || true
                                         
                                         # Clean up Network Interfaces
                                         echo "Cleaning up network interfaces..."
-                                        VPCS=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=wanderwise-vpc" --query 'Vpcs[*].VpcId' --output text)
+                                        VPCS=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=recipeapp-vpc" --query 'Vpcs[*].VpcId' --output text)
                                         for VPC in $VPCS; do
                                             ENIS=$(aws ec2 describe-network-interfaces --filters "Name=vpc-id,Values=$VPC" --query 'NetworkInterfaces[*].NetworkInterfaceId' --output text)
                                             for ENI in $ENIS; do
@@ -314,7 +314,7 @@ pipeline {
                         writeFile file: '.env', text: """
                             DB_USER=${DB_CREDS_USR}
                             DB_PASSWORD=${DB_CREDS_PSW}
-                            DB_NAME=wanderwise
+                            DB_NAME=recipeapp
                             DB_HOST=${env.DB_HOST}
                             JWT_SECRET=${JWT_SECRET}
                             NODE_ENV=production
@@ -355,17 +355,17 @@ pipeline {
                     withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh '''
                             # Login to Docker Hub
-                            echo "$DOCKER_PASS" | docker login -u isuruamarasena --password-stdin
+                            echo "$DOCKER_PASS" | docker login -u kasun020 --password-stdin
                             
                             # Build the image
-                            docker build -t isuruamarasena/wanderwise:${BUILD_NUMBER} .
+                            docker build -t kasun020/recipeapp:${BUILD_NUMBER} .
                             
                             # Push the image
-                            docker push isuruamarasena/wanderwise:${BUILD_NUMBER}
+                            docker push kasun020/recipeapp:${BUILD_NUMBER}
                             
                             # Tag and push latest
-                            docker tag isuruamarasena/wanderwise:${BUILD_NUMBER} isuruamarasena/wanderwise:latest
-                            docker push isuruamarasena/wanderwise:latest
+                            docker tag kasun020/recipeapp:${BUILD_NUMBER} kasun020/recipeapp:latest
+                            docker push kasun020/recipeapp:latest
                             
                             # Cleanup
                             docker logout
