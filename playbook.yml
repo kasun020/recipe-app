@@ -1,0 +1,106 @@
+---
+- name: Configure WanderWise Web Server
+  hosts: webservers
+  become: yes
+  gather_facts: yes
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+    ansible_connection: ssh
+    ansible_user: ec2-user
+    ansible_become: yes
+    ansible_become_method: sudo
+    ansible_become_pass: ""
+    ansible_host_key_checking: false
+
+  pre_tasks:
+    - name: Wait for SSH to become available
+      wait_for_connection:
+        timeout: 300
+        delay: 10
+
+  tasks:
+    - name: Create required directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: ec2-user
+        group: ec2-user
+      with_items:
+        - /home/ec2-user/.ansible/tmp
+        - /home/ec2-user/app
+
+    - name: Install system packages
+      apt:
+        name: 
+          - python3-pip 
+          - docker.io
+        state: present
+        update_cache: yes
+      become: yes
+
+    - name: Install Docker Python library
+      pip:
+        name: docker-py
+        state: present
+      become: yes
+
+    - name: Start Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+      become: yes
+
+    - name: Add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+      become: yes
+
+    - name: Create docker-compose.yml
+      copy:
+        content: |
+          version: '3'
+          services:
+            web:
+              image: isuruamarasena/wanderwise:latest
+              ports:
+                - "3000:3000"
+              environment:
+                - DB_USER=${DB_USER}
+                - DB_PASSWORD=${DB_PASSWORD}
+                - DB_NAME=${DB_NAME}
+                - DB_HOST=${DB_HOST}
+                - JWT_SECRET=${JWT_SECRET}
+                - NODE_ENV=production
+              restart: always
+        dest: /home/ec2-user/app/docker-compose.yml
+        mode: '0644'
+        owner: ec2-user
+        group: ec2-user
+
+    - name: Copy .env file
+      copy:
+        src: .env
+        dest: /home/ec2-user/app/.env
+        mode: '0600'
+        owner: ec2-user
+        group: ec2-user
+
+    - name: Pull Docker image
+      docker_image:
+        name: isuruamarasena/wanderwise:latest
+        source: pull
+        force_source: yes
+
+    - name: Run Docker container
+      docker_container:
+        name: wanderwise
+        image: isuruamarasena/wanderwise:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "3000:3000"
+        env_file: /home/ec2-user/app/.env
